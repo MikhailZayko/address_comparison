@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 @Slf4j
 @Service
@@ -56,10 +57,10 @@ public class AddressServiceImpl implements AddressService {
                     callWithRetry(() -> dadataClient.getCoordinates(address), "Dadata", address)
             );
 
-            CompletableFuture.allOf(yandexFuture, dadataFuture).join();
+            CompletableFuture.allOf(yandexFuture, dadataFuture).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            CoordinatesDto yandexCoords = yandexFuture.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            CoordinatesDto dadataCoords = dadataFuture.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            CoordinatesDto yandexCoords = yandexFuture.get();
+            CoordinatesDto dadataCoords = dadataFuture.get();
 
             log.info("Yandex coords: lat={}, lon={}", yandexCoords.latitude(), yandexCoords.longitude());
             log.info("Dadata coords: lat={}, lon={}", dadataCoords.latitude(), dadataCoords.longitude());
@@ -80,7 +81,7 @@ public class AddressServiceImpl implements AddressService {
         }
     }
 
-    private CoordinatesDto callWithRetry(java.util.function.Supplier<CoordinatesDto> supplier,
+    private CoordinatesDto callWithRetry(Supplier<CoordinatesDto> supplier,
                                          String clientName, String address) {
         Exception lastException = null;
 
@@ -88,14 +89,9 @@ public class AddressServiceImpl implements AddressService {
             try {
                 log.debug("{} attempt {}/{} for address: {}", clientName, attempt, MAX_RETRIES, address);
                 return supplier.get();
-            } catch (Exception e) {
+            } catch (ApiException e) {
                 lastException = e;
                 log.warn("{} attempt {} failed: {}", clientName, attempt, e.getMessage());
-
-                if (e instanceof ApiException && e.getMessage().contains("404")) {
-                    log.warn("{} returned 404, not retrying", clientName);
-                    throw (ApiException) e;
-                }
             }
         }
 

@@ -1,5 +1,6 @@
 package ru.example.addresscomparison.client.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -42,29 +43,34 @@ public class YandexCoordinatesClient implements CoordinatesClient {
     }
 
     private CoordinatesDto parseResponse(String json) {
+        JsonNode root;
         try {
-            JsonNode root = objectMapper.readTree(json);
-            String pos = root.path("response")
-                    .path("GeoObjectCollection")
-                    .path("featureMember")
-                    .path(0)
-                    .path("GeoObject")
-                    .path("Point")
-                    .path("pos")
-                    .asText();
-
-            if (pos.isEmpty()) {
-                throw new ApiException("No coordinates found in Yandex response");
-            }
-
-            String[] parts = pos.split(" ");
-            double lon = Double.parseDouble(parts[0]);
-            double lat = Double.parseDouble(parts[1]);
-
-            return new CoordinatesDto(lat, lon);
-        } catch (Exception e) {
-            log.error("Failed to parse Yandex response: {}", json, e);
-            throw new ApiException("Failed to parse Yandex response", e);
+            root = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
         }
+        String pos = root.path("response")
+                .path("GeoObjectCollection")
+                .path("featureMember")
+                .path(0)
+                .path("GeoObject")
+                .path("Point")
+                .path("pos")
+                .asText();
+
+        if (pos.isEmpty()) {
+            throw new ApiException("No coordinates found in Yandex response");
+        }
+
+        String[] parts = pos.split(" ");
+
+        if (parts.length != 2) {
+            throw new ApiException("Invalid response from Yandex Client");
+        }
+        double lon = Double.parseDouble(parts[0]);
+        double lat = Double.parseDouble(parts[1]);
+
+        return new CoordinatesDto(lat, lon);
+
     }
 }
